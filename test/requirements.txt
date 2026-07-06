@@ -1,0 +1,6 @@
+pytest>=7.0
+# End-to-end hardware tests (test/e2e) additionally require:
+#   websocket-client  - WebSocket client to drive the board's control port
+#   python3-evdev     - system package (apt install python3-evdev on Raspberry Pi OS);
+#                       provides the evdev module used to observe USB HID output.
+websocket-client>=1.8
