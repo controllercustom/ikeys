@@ -28,17 +28,22 @@
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 #include <Preferences.h>
-#include <ESP32USBHID.h>
+#include "USB.h"
+#include <USBHIDKeyboard.h>
+#include <USBHIDMouse.h>
+#include <USBHIDConsumerControl.h>
 #ifdef ARDUINO_M5STACK_ATOMS3
 #include <M5GFX.h>
 #endif
 
-#define VERSION "1.0.0"
+#define VERSION "1.0.1"
 
 volatile uint8_t ledState = 0;
 volatile uint8_t ledStateChanged = 0;
 
-ESP32USBHID HID;
+USBHIDKeyboard keyboard;
+USBHIDRelativeMouse mouse;
+USBHIDConsumerControl consumer;
 #ifdef ARDUINO_M5STACK_ATOMS3
 M5GFX display;
 #endif
@@ -46,12 +51,64 @@ WebServer server(80);
 WebSocketsServer webSocket(81);
 
 // ====================================================================
-// Mouse direction masks (iKeys-specific, not HID button masks)
+// Raw HID keycode constants (USB HID Usage Tables, Keyboard/Keypad page 0x07)
+// The built-in USBHIDKeyboard uses Arduino-style keycodes (0x80+/0x88+),
+// but iKeys sends raw HID usage IDs via pressRaw/releaseRaw, so we need
+// the raw HID values here, NOT the Arduino-style defines from the header.
 // ====================================================================
-#define MOUSE_LEFT   0x01
-#define MOUSE_RIGHT  0x02
-#define MOUSE_UP     0x04
-#define MOUSE_DOWN   0x08
+#define KEY_UP        0x52
+#define KEY_DOWN      0x51
+#define KEY_LEFT      0x50
+#define KEY_RIGHT     0x4F
+#define KEY_DELETE    0x4C
+#define KEY_HOME      0x4A
+#define KEY_END       0x4D
+#define KEY_PAGE_UP   0x4B
+#define KEY_PAGE_DOWN 0x4E
+#define KEY_INSERT    0x49
+#define KEY_TAB       0x2B
+#define KEY_CAPS_LOCK 0x39
+#define KEY_NUM_LOCK  0x53
+#define KEY_SPACE     0x2C
+#define KEY_F1        0x3A
+
+#define KEY_NP_DIV    0x54
+#define KEY_NP_MUL    0x55
+#define KEY_NP_SUB    0x56
+#define KEY_NP_ADD    0x57
+#define KEY_NP_ENT    0x58
+#define KEY_NP1       0x59
+#define KEY_NP2       0x5A
+#define KEY_NP3       0x5B
+#define KEY_NP4       0x5C
+#define KEY_NP5       0x5D
+#define KEY_NP6       0x5E
+#define KEY_NP7       0x5F
+#define KEY_NP8       0x60
+#define KEY_NP9       0x61
+#define KEY_NP0       0x62
+#define KEY_NP_DOT    0x63
+
+// Consumer control codes (from USB HID Consumer page)
+#define MEDIA_MUTE   0x00E2
+#define MEDIA_VOL_DN 0x00EA
+#define MEDIA_VOL_UP 0x00E9
+#define MEDIA_PLAY   0x00CD
+#define MEDIA_PREV   0x00B6
+#define MEDIA_NEXT   0x00B5
+#define MEDIA_FF     0x00B3
+#define MEDIA_RW     0x00B4
+
+// Modifier bit positions (USB HID boot keyboard report modifier byte)
+#define MOD_LSHIFT 0x02
+
+// ====================================================================
+// Direction masks (iKeys-specific movement, not HID button masks)
+// ====================================================================
+#define DIR_LEFT   0x01
+#define DIR_RIGHT  0x02
+#define DIR_UP     0x04
+#define DIR_DOWN   0x08
 
 // ====================================================================
 // State
@@ -94,30 +151,134 @@ DClickState dclickState = DC_IDLE;
 unsigned long dclickTimer = 0;
 
 // ====================================================================
-// HID Helpers (thin wrappers over ESP32USBHID library)
+// charToHID — ASCII to HID keycode (PROGMEM table, indices 0..127)
+// ====================================================================
+static uint8_t charToHID(char c) {
+  if ((uint8_t)c > 127) return 0;
+  static const uint8_t PROGMEM table[128] = {
+    0,0,0,0,0,0,0,0, 0x2A,0x2B,0x28,0,0,0x28,0,0,
+    0,0,0,0,0,0,0,0, 0,0,0,0x29,0,0,0,0,
+    0x2C,0x1E,0x34,0x20, 0x21,0x22,0x24,0x34,
+    0x26,0x27,0x25,0x2E, 0x36,0x2D,0x37,0x38,
+    0x27,0x1E,0x1F,0x20, 0x21,0x22,0x23,0x24,
+    0x25,0x26,0x33,0x33, 0x36,0x2E,0x37,0x38,
+    0x1F,0x04,0x05,0x06, 0x07,0x08,0x09,0x0A,
+    0x0B,0x0C,0x0D,0x0E, 0x0F,0x10,0x11,0x12,
+    0x13,0x14,0x15,0x16, 0x17,0x18,0x19,0x1A,
+    0x1B,0x1C,0x1D,0x2F, 0x31,0x30,0x23,0x2D,
+    0x35,0x04,0x05,0x06, 0x07,0x08,0x09,0x0A,
+    0x0B,0x0C,0x0D,0x0E, 0x0F,0x10,0x11,0x12,
+    0x13,0x14,0x15,0x16, 0x17,0x18,0x19,0x1A,
+    0x1B,0x1C,0x1D,0x2F, 0x31,0x30,0x35,0
+  };
+  return pgm_read_byte(&table[(uint8_t)c]);
+}
+
+// ====================================================================
+// needsShift — returns true if a printable ASCII character requires
+//              the Shift modifier (PROGMEM table, indices 0..127)
+// ====================================================================
+static bool needsShift(char c) {
+  static const bool PROGMEM table[128] = {
+    0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+    0,1,1,1,1,1,1,0, 1,1,1,1,0,0,0,0,
+    0,0,0,0,0,0,0,0, 0,0,1,0,1,0,1,1,
+    1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1, 1,1,1,0,0,0,1,1,
+    0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0, 0,0,0,1,1,1,1,0
+  };
+  return ((uint8_t)c) < 128 && pgm_read_byte(&table[(uint8_t)c]);
+}
+
+// ====================================================================
+// Custom keyboard state tracking (replaces ESP32USBHID internal state)
+// ====================================================================
+uint8_t kbdModifiers = 0;
+uint8_t kbdKeys[6] = {0};
+int kbdKeyCount = 0;
+uint8_t keyCustomRefCount[256] = {0};
+uint16_t currentConsumerUsage = 0;
+
+static void sendKbdReport() {
+  KeyReport report;
+  report.modifiers = kbdModifiers;
+  report.reserved = 0;
+  memset(report.keys, 0, 6);
+  for (int i = 0; i < kbdKeyCount; i++) {
+    report.keys[i] = kbdKeys[i];
+  }
+  keyboard.sendReport(&report);
+}
+
+static void pressKeyCustom(uint8_t kc) {
+  if (kc == 0) return;
+  if (keyCustomRefCount[kc] == 0) {
+    bool already = false;
+    for (int i = 0; i < kbdKeyCount; i++) {
+      if (kbdKeys[i] == kc) { already = true; break; }
+    }
+    if (!already && kbdKeyCount < 6) {
+      kbdKeys[kbdKeyCount++] = kc;
+    }
+  }
+  if (keyCustomRefCount[kc] < 255) keyCustomRefCount[kc]++;
+  sendKbdReport();
+}
+
+static void releaseKeyCustom(uint8_t kc) {
+  if (kc == 0) return;
+  if (keyCustomRefCount[kc] > 0) keyCustomRefCount[kc]--;
+  if (keyCustomRefCount[kc] > 0) return;
+  for (int i = 0; i < kbdKeyCount; i++) {
+    if (kbdKeys[i] == kc) {
+      kbdKeys[i] = kbdKeys[--kbdKeyCount];
+      kbdKeys[kbdKeyCount] = 0;
+      break;
+    }
+  }
+  sendKbdReport();
+}
+
+static void releaseAllCustom() {
+  kbdModifiers = 0;
+  memset(kbdKeys, 0, 6);
+  kbdKeyCount = 0;
+  sendKbdReport();
+}
+
+static void pressModCustom(uint8_t mod) {
+  kbdModifiers |= mod;
+  sendKbdReport();
+}
+
+static void releaseModCustom(uint8_t mod) {
+  kbdModifiers &= ~mod;
+  sendKbdReport();
+}
+
+// ====================================================================
+// HID Helpers
 // ====================================================================
 static void sendKeycode(uint8_t kc) {
-  HID.pressKey(kc);
+  pressKeyCustom(kc);
   delay(1);
-  HID.releaseKey(kc);
+  releaseKeyCustom(kc);
 }
 
-// Press a key and KEEP it down until an explicit key-up arrives, so iKeys
-// behaves like a real keyboard (keys can be held, e.g. for games). The library
-// refcounts via keyRefCount, so the matching release is safe and idempotent.
 static void pressHeldKey(uint8_t kc) {
-  HID.pressKey(kc);
+  pressKeyCustom(kc);
 }
 
-// Release a key previously held via pressHeldKey (no-op if not pressed).
 static void releaseHeldKey(uint8_t kc) {
-  HID.releaseKey(kc);
+  releaseKeyCustom(kc);
 }
 
 static void mouseDoubleClick() {
   if (dclickState == DC_IDLE) {
     dclickState = DC_DOWN1;
-    HID.setMouseButtons(HID.getMouseButtons() | MOUSE_BTN_LEFT);
+    mouse.press(MOUSE_LEFT);
     dclickTimer = millis();
   }
 }
@@ -125,9 +286,9 @@ static void mouseDoubleClick() {
 static void toggleLeftLock() {
   leftButtonLocked = !leftButtonLocked;
   if (leftButtonLocked) {
-    HID.setMouseButtons(HID.getMouseButtons() | MOUSE_BTN_LEFT);
+    mouse.press(MOUSE_LEFT);
   } else {
-    HID.setMouseButtons(HID.getMouseButtons() & ~MOUSE_BTN_LEFT);
+    mouse.release(MOUSE_LEFT);
   }
   if (wsClientCount > 0) {
     webSocket.broadcastTXT(leftButtonLocked ? "#DRAG:1" : "#DRAG:0");
@@ -135,7 +296,11 @@ static void toggleLeftLock() {
 }
 
 static void resetState() {
-  HID.releaseAll();
+  releaseAllCustom();
+  memset(keyCustomRefCount, 0, sizeof(keyCustomRefCount));
+  mouse.release(MOUSE_LEFT | MOUSE_RIGHT);
+  consumer.release();
+  currentConsumerUsage = 0;
   shiftRefCount = ctrlRefCount = altRefCount = guiRefCount = 0;
   mouseDirections = 0;
   mouseMoving = false;
@@ -150,21 +315,21 @@ static void resetState() {
 static void handleSingleChar(const char* key) {
   if (!key[0] || key[1]) return;
   char c = key[0];
-  uint8_t kc = ESP32USBHID::charToHID(c);
+  uint8_t kc = charToHID(c);
   if (kc == 0) return;
-  uint8_t savedMod = HID.getModifierState();
+  uint8_t savedMod = kbdModifiers;
   bool doCaps = smartTypingShiftNext && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'));
-  if (ESP32USBHID::needsShift(c) || doCaps) HID.setModifierState(savedMod | MOD_LSHIFT);
+  if (needsShift(c) || doCaps) kbdModifiers |= 0x02;
   if (doCaps) smartTypingShiftNext = false;
-  HID.pressKey(kc);
-  HID.setModifierState(savedMod);
+  pressKeyCustom(kc);
+  kbdModifiers = savedMod;
 
   if (smartTypingEnabled) {
     if (c == 'q' || c == 'Q') {
-      sendKeycode(ESP32USBHID::charToHID('u'));
+      sendKeycode(charToHID('u'));
     } else if (c == '.' || c == '!' || c == '?') {
-      sendKeycode(KEY_SPACE);
-      sendKeycode(KEY_SPACE);
+      sendKeycode(0x2C);
+      sendKeycode(0x2C);
       smartTypingShiftNext = true;
     }
   }
@@ -212,7 +377,7 @@ static void handleMediaKey(const char* key) {
   else if (strcmp(key, "*MEDnext")   == 0) usage = MEDIA_NEXT;
   else if (strcmp(key, "*MEDff")     == 0) usage = MEDIA_FF;
   else if (strcmp(key, "*MEDrw")     == 0) usage = MEDIA_RW;
-  if (usage) HID.pressConsumer(usage);
+  if (usage) { currentConsumerUsage = usage; consumer.press(usage); }
 }
 
 void handleKeyDown(const char* key) {
@@ -231,17 +396,17 @@ void handleKeyDown(const char* key) {
     case 'M':
       switch (key[2]) {
         case 'U':
-          if (key[3] == 'L') { mouseDirections |= MOUSE_UP | MOUSE_LEFT; }
-          else if (key[3] == 'p') { mouseDirections |= MOUSE_UP; }
-          else { mouseDirections |= MOUSE_UP | MOUSE_RIGHT; }
+          if (key[3] == 'L') { mouseDirections |= DIR_UP | DIR_LEFT; }
+          else if (key[3] == 'p') { mouseDirections |= DIR_UP; }
+          else { mouseDirections |= DIR_UP | DIR_RIGHT; }
           return;
         case 'D':
-          if (key[3] == 'L') { mouseDirections |= MOUSE_DOWN | MOUSE_LEFT; }
-          else if (key[3] == 'n') { mouseDirections |= MOUSE_DOWN; }
-          else { mouseDirections |= MOUSE_DOWN | MOUSE_RIGHT; }
+          if (key[3] == 'L') { mouseDirections |= DIR_DOWN | DIR_LEFT; }
+          else if (key[3] == 'n') { mouseDirections |= DIR_DOWN; }
+          else { mouseDirections |= DIR_DOWN | DIR_RIGHT; }
           return;
-        case 'L': mouseDirections |= MOUSE_LEFT; return;
-        case 'R': mouseDirections |= MOUSE_RIGHT; return;
+        case 'L': mouseDirections |= DIR_LEFT; return;
+        case 'R': mouseDirections |= DIR_RIGHT; return;
       }
       return;
     case 'U':
@@ -252,7 +417,7 @@ void handleKeyDown(const char* key) {
       else if (key[2] == 'e') { pressHeldKey(KEY_DELETE); }
       return;
     case 'L':
-      if (key[2] == 'C') { HID.setMouseButtons(HID.getMouseButtons() | MOUSE_BTN_RIGHT); }
+      if (key[2] == 'C') { mouse.press(MOUSE_RIGHT); }
       else if (key[2] == 'f') { pressHeldKey(KEY_LEFT); }
       return;
     case 'R':
@@ -261,25 +426,25 @@ void handleKeyDown(const char* key) {
       return;
     case 'S':
       if (key[2] == 'h') {
-        if (shiftRefCount == 0) HID.pressModifier(MOD_LSHIFT);
+        if (shiftRefCount == 0) pressModCustom(0x02);
         if (shiftRefCount < 255) shiftRefCount++;
       } else if (key[2] == 'm') { smartTypingEnabled = !smartTypingEnabled; { Preferences p; p.begin("ikeys", false); p.putUChar("smarten", smartTypingEnabled); p.end(); } webSocket.broadcastTXT(smartTypingEnabled ? "#SMT:1" : "#SMT:0"); }
       else if (key[2] == 'H') pressHeldKey(KEY_TAB);
       else mouseDoubleClick();
       return;
     case 'C':
-      if (key[2] == 'n') { HID.setMouseButtons(HID.getMouseButtons() | MOUSE_BTN_LEFT); }
+      if (key[2] == 'n') { mouse.press(MOUSE_LEFT); }
       else if (key[2] == 'a') pressHeldKey(KEY_CAPS_LOCK);
       else if (key[2] == 't') {
-        if (ctrlRefCount == 0) HID.pressModifier(MOD_LCTRL);
+        if (ctrlRefCount == 0) pressModCustom(0x01);
         if (ctrlRefCount < 255) ctrlRefCount++;
       } else {
-        if (guiRefCount == 0) HID.pressModifier(MOD_LGUI);
+        if (guiRefCount == 0) pressModCustom(0x08);
         if (guiRefCount < 255) guiRefCount++;
       }
       return;
     case 'A':
-      if (altRefCount == 0) HID.pressModifier(MOD_LALT);
+      if (altRefCount == 0) pressModCustom(0x04);
       if (altRefCount < 255) altRefCount++;
       return;
     case 'N':
@@ -300,10 +465,10 @@ void handleKeyDown(const char* key) {
 }
 
 void handleKeyUp(const char* key) {
-  if (strncmp(key, "*MED", 4) == 0) { HID.releaseConsumer(); return; }
+  if (strncmp(key, "*MED", 4) == 0) { consumer.release(); currentConsumerUsage = 0; return; }
   if (key[0] != '*') {
     if (key[0] && !key[1]) {
-      uint8_t kc = ESP32USBHID::charToHID(key[0]); if (kc != 0) HID.releaseKey(kc);
+      uint8_t kc = charToHID(key[0]); if (kc != 0) releaseKeyCustom(kc);
     }
     return;
   }
@@ -311,17 +476,17 @@ void handleKeyUp(const char* key) {
     case 'M':
       switch (key[2]) {
         case 'U':
-          if (key[3] == 'L') mouseDirections &= ~(MOUSE_UP | MOUSE_LEFT);
-          else if (key[3] == 'p') mouseDirections &= ~MOUSE_UP;
-          else mouseDirections &= ~(MOUSE_UP | MOUSE_RIGHT);
+          if (key[3] == 'L') mouseDirections &= ~(DIR_UP | DIR_LEFT);
+          else if (key[3] == 'p') mouseDirections &= ~DIR_UP;
+          else mouseDirections &= ~(DIR_UP | DIR_RIGHT);
           return;
         case 'D':
-          if (key[3] == 'L') mouseDirections &= ~(MOUSE_DOWN | MOUSE_LEFT);
-          else if (key[3] == 'n') mouseDirections &= ~MOUSE_DOWN;
-          else mouseDirections &= ~(MOUSE_DOWN | MOUSE_RIGHT);
+          if (key[3] == 'L') mouseDirections &= ~(DIR_DOWN | DIR_LEFT);
+          else if (key[3] == 'n') mouseDirections &= ~DIR_DOWN;
+          else mouseDirections &= ~(DIR_DOWN | DIR_RIGHT);
           return;
-        case 'L': mouseDirections &= ~MOUSE_LEFT; return;
-        case 'R': mouseDirections &= ~MOUSE_RIGHT; return;
+        case 'L': mouseDirections &= ~DIR_LEFT; return;
+        case 'R': mouseDirections &= ~DIR_RIGHT; return;
       }
       return;
     case 'U':
@@ -332,7 +497,7 @@ void handleKeyUp(const char* key) {
       else if (key[2] == 'e') { releaseHeldKey(KEY_DELETE); }
       return;
     case 'L':
-      if (key[2] == 'C') { HID.setMouseButtons(HID.getMouseButtons() & ~MOUSE_BTN_RIGHT); }
+      if (key[2] == 'C') { mouse.release(MOUSE_RIGHT); }
       else if (key[2] == 'f') { releaseHeldKey(KEY_LEFT); }
       return;
     case 'R':
@@ -340,25 +505,25 @@ void handleKeyUp(const char* key) {
       else if (key[2] == 'g') { releaseHeldKey(KEY_RIGHT); }
       return;
     case 'C':
-      if (key[2] == 'n') { if (!leftButtonLocked) HID.setMouseButtons(HID.getMouseButtons() & ~MOUSE_BTN_LEFT); }
+      if (key[2] == 'n') { if (!leftButtonLocked) mouse.release(MOUSE_LEFT); }
       else if (key[2] == 'a') { releaseHeldKey(KEY_CAPS_LOCK); }
       else if (key[2] == 't') {
         if (ctrlRefCount > 0) ctrlRefCount--;
-        if (ctrlRefCount == 0) HID.releaseModifier(MOD_LCTRL);
+        if (ctrlRefCount == 0) releaseModCustom(0x01);
       } else if (key[2] == 'm') {
         if (guiRefCount > 0) guiRefCount--;
-        if (guiRefCount == 0) HID.releaseModifier(MOD_LGUI);
+        if (guiRefCount == 0) releaseModCustom(0x08);
       }
       return;
     case 'S':
       if (key[2] == 'h') {
         if (shiftRefCount > 0) shiftRefCount--;
-        if (shiftRefCount == 0) HID.releaseModifier(MOD_LSHIFT);
+        if (shiftRefCount == 0) releaseModCustom(0x02);
       }
       return;
     case 'A':
       if (altRefCount > 0) altRefCount--;
-      if (altRefCount == 0) HID.releaseModifier(MOD_LALT);
+      if (altRefCount == 0) releaseModCustom(0x04);
       return;
     case 'N':
       if (key[2] == 'P' && key[3]) { releaseNumpadKey(key); }
@@ -499,8 +664,18 @@ void setup() {
 #endif
   bootMsg("Starting...", nullptr, nullptr);
 
-  HID.begin();
-  HID.onLED([](uint8_t s){ ledState = s; ledStateChanged = 1; });
+  USB.usbClass(0);
+  USB.usbSubClass(0);
+  USB.usbProtocol(0);
+  if (!USB.begin()) { Serial.println("[ERR] USB init failed"); }
+  keyboard.begin();
+  mouse.begin();
+  consumer.begin();
+  keyboard.onEvent(ARDUINO_USB_HID_KEYBOARD_LED_EVENT, [](void* arg, esp_event_base_t base, int32_t id, void* data) {
+    auto* ev = (arduino_usb_hid_keyboard_event_data_t*)data;
+    ledState = ev->leds;
+    ledStateChanged = 1;
+  });
   {
     Preferences p;
     p.begin("ikeys", true);
@@ -622,7 +797,7 @@ void setup() {
 
 static void handleWdt(unsigned long now) {
   if (lastWSActivity && now - lastWSActivity > 5000 &&
-      (HID.getModifierState() || HID.getPressedCount() || HID.getMouseButtons() || mouseDirections || HID.getConsumerState())) {
+      (kbdModifiers || kbdKeyCount || mouse.isPressed(MOUSE_LEFT) || mouse.isPressed(MOUSE_RIGHT) || mouseDirections || currentConsumerUsage)) {
     Serial.println("[WDT] No WS activity for 5s — resetting state");
     resetState();
     lastWSActivity = now;
@@ -674,11 +849,11 @@ static void handleMouseMovement(unsigned long now) {
         if (delta > 127) delta = 127;
       }
       int8_t dx = 0, dy = 0;
-      if (mouseDirections & MOUSE_LEFT)  dx -= delta;
-      if (mouseDirections & MOUSE_RIGHT) dx += delta;
-      if (mouseDirections & MOUSE_UP)    dy -= delta;
-      if (mouseDirections & MOUSE_DOWN)  dy += delta;
-      HID.moveMouse(dx, dy);
+      if (mouseDirections & DIR_LEFT)  dx -= delta;
+      if (mouseDirections & DIR_RIGHT) dx += delta;
+      if (mouseDirections & DIR_UP)    dy -= delta;
+      if (mouseDirections & DIR_DOWN)  dy += delta;
+      mouse.move(dx, dy);
       lastMouseMove = now;
     }
   } else {
@@ -691,15 +866,15 @@ static void handleDoubleClick(unsigned long now) {
     dclickTimer = now;
     switch (dclickState) {
       case DC_DOWN1:
-        HID.setMouseButtons(HID.getMouseButtons() & ~MOUSE_BTN_LEFT);
+        mouse.release(MOUSE_LEFT);
         dclickState = DC_UP1;
         break;
       case DC_UP1:
-        HID.setMouseButtons(HID.getMouseButtons() | MOUSE_BTN_LEFT);
+        mouse.press(MOUSE_LEFT);
         dclickState = DC_DOWN2;
         break;
       case DC_DOWN2:
-        HID.setMouseButtons(HID.getMouseButtons() & ~MOUSE_BTN_LEFT);
+        mouse.release(MOUSE_LEFT);
         dclickState = DC_UP2;
         break;
       case DC_UP2:

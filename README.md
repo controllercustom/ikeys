@@ -58,9 +58,7 @@ The ESP32-S3's **native USB port** (USB-OTG) is required for HID — the UART/se
     - **WiFiManager** by tzapu
     - **M5GFX** by M5Stack (required for AtomS3 only)
     - **WebSockets** by Markus Sattler
-    - **ESP32USBHID** — wraps the USB HID layer. This library is **not** in the Arduino Library Manager, so install it manually:
-        1. Download the ZIP from **https://github.com/controllercustom/ESP32USBHID** (click **Code → Download ZIP**).
-        2. In the Arduino IDE, go to *Sketch → Include Library → Add .ZIP Library…* and select the downloaded `ESP32USBHID-main.zip`.
+    - **Built-in ESP32 USB HID libraries** (`USBHIDKeyboard`, `USBHIDRelativeMouse`, `USBHIDConsumerControl`) — these ship with the ESP32 Arduino core, no extra install needed.
 
 3. **Select your board**:
    - **Generic ESP32-S3**: *Tools → Board → ESP32 Arduino → ESP32S3 Dev Module*
@@ -84,10 +82,16 @@ Install [Arduino CLI](https://arduino.github.io/arduino-cli/), the ESP32 core, a
 
 ```bash
 arduino-cli core install esp32:esp32
-arduino-cli lib install "WiFiManager" "M5GFX"
-# ESP32USBHID is not in Library Manager — clone it from GitHub
-git clone https://github.com/controllercustom/ESP32USBHID ~/Arduino/libraries/ESP32USBHID
+arduino-cli lib install "WiFiManager" "M5GFX" "WebSockets"
+# No external HID library needed — built-in USBHIDKeyboard/Mouse/ConsumerControl used
 ```
+
+| Component | Version |
+|---|---|
+| ESP32 Arduino Core | 3.3.10 |
+| WiFiManager | 2.0.17 |
+| M5GFX | 0.2.24 |
+| WebSockets | 2.7.2 |
 
 Compile and upload via serial:
 
