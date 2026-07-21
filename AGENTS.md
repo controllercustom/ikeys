@@ -24,6 +24,36 @@ Assistive keyboard project (v0.4) using an ESP32-S3 that acts as a USB HID devic
 - **macOS vs Windows HID differences**: (1) Mouse required a 5-byte report — see Historical Bugs. (2) macOS has no Num Lock; usage `0x53` acts as Clear, and the keypad is always numeric (PC "Num-Lock-off" nav does not exist). (3) macOS ignores Caps Lock presses shorter than ~100ms (accidental-keystroke prevention) — resolved because Caps Lock is now held until finger-up like every other key, so a real finger hold always exceeds 100ms. (4) Insert/PrintScreen/ScrollLock have no macOS function. (5) Modifiers are intentionally left as-is (GUI=⌘, Alt=⌥); the dedicated ⌘ key is used for Mac shortcuts.
 - **Held keys (real-keyboard behavior)**: All non-modifier keys are pressed on key-down and released only on the matching key-up — they stay reported as DOWN while the finger is held (so games/key-combos like WASD/arrows/F-keys work). Implemented via `pressHeldKey()`/`releaseHeldKey()` (`sendKeycode`'s auto-release is used only for the smart-typing auto-injected `u`/space taps). The HID boot keyboard report allows up to 6 simultaneous keys. Disconnect calls `resetState()` (global release).
 - **Embedded webpage**: CSS active-state rules consolidated via grouped selectors; JS modifier keys dispatched via lookup object; `pointerup`/`pointercancel` share one handler.
+- **Timing instrumentation**: Conditional compile via `#define TIMING` in `ikeys.ino` (line with `// #define TIMING` — uncomment to enable). When enabled, `esp_timer_get_time()` stamps at WebSocket message receipt and the first HID send, printing `[TIMING] K/M/C ws=... hid=... fw_us=...` in `loop()`. Adds ~588 bytes flash, ~24 bytes RAM.
+
+## Latency Optimization
+
+Measured end-to-end latency on ESP32-S3 dev module (30-50 sample median):
+
+| HID Type | Firmware Processing (WS→HID) | End-to-End (WS send→host) |
+|----------|---------------------------:|--------------------------:|
+| Keyboard | **16 µs** median | **4.6 ms** median |
+| Mouse    | **13 µs** median | **6.2 ms** median |
+| Media    | **13 µs** median | **2.9 ms** median |
+
+### Optimizations applied
+1. **CPU frequency**: `setCpuFrequencyMhz(240)` in `setup()` — ensures max clock rate
+2. **WiFi modem sleep disabled**: `esp_wifi_set_ps(WIFI_PS_NONE)` after WiFi connects — prevents modem sleep from adding 50-200ms of latency. This was the dominant bottleneck (ping dropped from ~130ms to ~5ms).
+3. **Main loop reorder**: `webSocket.loop()` called first, before `ArduinoOTA.handle()` and `server.handleClient()` — minimizes polling delay for WS messages
+
+### Measurement
+The `test/measure_latency.py` script measures both firmware processing time (via Serial `[TIMING]` output) and end-to-end HID arrival (via evdev `active_keys()` for keyboard/mouse, event stream for media). Run:
+```bash
+# Keyboard latency
+sudo python3 test/measure_latency.py --host <ip> --type key --key a --samples 50
+
+# Mouse left-click latency
+sudo python3 test/measure_latency.py --host <ip> --type mouse --samples 30
+
+# Media play/pause latency
+sudo python3 test/measure_latency.py --host <ip> --type media --samples 30
+```
+Enable `#define TIMING` in `ikeys.ino` and reflash before measuring.
 
 ## Build & Upload
 ```bash

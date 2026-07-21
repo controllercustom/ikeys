@@ -36,7 +36,7 @@ const char index_html[] PROGMEM = R"rawliteral(
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>iKeys v1.0.1 Keyboard</title>
+    <title>iKeys v1.0.2 Keyboard</title>
     <style>
         :root {
             --bg-chassis: #e0e0d1;

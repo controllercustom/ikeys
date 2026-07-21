@@ -35,8 +35,26 @@
 #ifdef ARDUINO_M5STACK_ATOMS3
 #include <M5GFX.h>
 #endif
+#include <esp_wifi.h>
 
-#define VERSION "1.0.1"
+#define VERSION "1.0.2"
+
+// Timing instrumentation — uncomment #define TIMING below for latency measurement
+// #define TIMING
+#ifdef TIMING
+#include <esp_timer.h>
+static uint64_t _t_ws = 0;
+static uint64_t _t_hid = 0;
+static char _t_type = 'K';
+static bool _t_pending = false;
+#define TIMING_STAMP_WS()      do { _t_ws = esp_timer_get_time(); _t_hid = 0; _t_pending = true; } while(0)
+#define TIMING_STAMP_HID(t)    do { if (_t_pending && !_t_hid) { _t_hid = esp_timer_get_time(); _t_type = (t); } } while(0)
+#define TIMING_PRINT()         do { if (_t_pending && _t_hid) { Serial.printf("[TIMING] %c ws=%llu hid=%llu fw_us=%llu\n", _t_type, _t_ws, _t_hid, _t_hid - _t_ws); _t_pending = false; _t_hid = 0; } } while(0)
+#else
+#define TIMING_STAMP_WS()
+#define TIMING_STAMP_HID(t)
+#define TIMING_PRINT()
+#endif
 
 volatile uint8_t ledState = 0;
 volatile uint8_t ledStateChanged = 0;
@@ -202,6 +220,7 @@ uint8_t keyCustomRefCount[256] = {0};
 uint16_t currentConsumerUsage = 0;
 
 static void sendKbdReport() {
+  TIMING_STAMP_HID('K');
   KeyReport report;
   report.modifiers = kbdModifiers;
   report.reserved = 0;
@@ -278,7 +297,7 @@ static void releaseHeldKey(uint8_t kc) {
 static void mouseDoubleClick() {
   if (dclickState == DC_IDLE) {
     dclickState = DC_DOWN1;
-    mouse.press(MOUSE_LEFT);
+    TIMING_STAMP_HID('M'); mouse.press(MOUSE_LEFT);
     dclickTimer = millis();
   }
 }
@@ -286,9 +305,9 @@ static void mouseDoubleClick() {
 static void toggleLeftLock() {
   leftButtonLocked = !leftButtonLocked;
   if (leftButtonLocked) {
-    mouse.press(MOUSE_LEFT);
+    TIMING_STAMP_HID('M'); mouse.press(MOUSE_LEFT);
   } else {
-    mouse.release(MOUSE_LEFT);
+    TIMING_STAMP_HID('M'); mouse.release(MOUSE_LEFT);
   }
   if (wsClientCount > 0) {
     webSocket.broadcastTXT(leftButtonLocked ? "#DRAG:1" : "#DRAG:0");
@@ -377,7 +396,7 @@ static void handleMediaKey(const char* key) {
   else if (strcmp(key, "*MEDnext")   == 0) usage = MEDIA_NEXT;
   else if (strcmp(key, "*MEDff")     == 0) usage = MEDIA_FF;
   else if (strcmp(key, "*MEDrw")     == 0) usage = MEDIA_RW;
-  if (usage) { currentConsumerUsage = usage; consumer.press(usage); }
+  if (usage) { currentConsumerUsage = usage; TIMING_STAMP_HID('C'); consumer.press(usage); }
 }
 
 void handleKeyDown(const char* key) {
@@ -417,7 +436,7 @@ void handleKeyDown(const char* key) {
       else if (key[2] == 'e') { pressHeldKey(KEY_DELETE); }
       return;
     case 'L':
-      if (key[2] == 'C') { mouse.press(MOUSE_RIGHT); }
+      if (key[2] == 'C') { TIMING_STAMP_HID('M'); mouse.press(MOUSE_RIGHT); }
       else if (key[2] == 'f') { pressHeldKey(KEY_LEFT); }
       return;
     case 'R':
@@ -433,7 +452,7 @@ void handleKeyDown(const char* key) {
       else mouseDoubleClick();
       return;
     case 'C':
-      if (key[2] == 'n') { mouse.press(MOUSE_LEFT); }
+      if (key[2] == 'n') { TIMING_STAMP_HID('M'); mouse.press(MOUSE_LEFT); }
       else if (key[2] == 'a') pressHeldKey(KEY_CAPS_LOCK);
       else if (key[2] == 't') {
         if (ctrlRefCount == 0) pressModCustom(0x01);
@@ -465,7 +484,7 @@ void handleKeyDown(const char* key) {
 }
 
 void handleKeyUp(const char* key) {
-  if (strncmp(key, "*MED", 4) == 0) { consumer.release(); currentConsumerUsage = 0; return; }
+  if (strncmp(key, "*MED", 4) == 0) { TIMING_STAMP_HID('C'); consumer.release(); currentConsumerUsage = 0; return; }
   if (key[0] != '*') {
     if (key[0] && !key[1]) {
       uint8_t kc = charToHID(key[0]); if (kc != 0) releaseKeyCustom(kc);
@@ -497,7 +516,7 @@ void handleKeyUp(const char* key) {
       else if (key[2] == 'e') { releaseHeldKey(KEY_DELETE); }
       return;
     case 'L':
-      if (key[2] == 'C') { mouse.release(MOUSE_RIGHT); }
+      if (key[2] == 'C') { TIMING_STAMP_HID('M'); mouse.release(MOUSE_RIGHT); }
       else if (key[2] == 'f') { releaseHeldKey(KEY_LEFT); }
       return;
     case 'R':
@@ -505,7 +524,7 @@ void handleKeyUp(const char* key) {
       else if (key[2] == 'g') { releaseHeldKey(KEY_RIGHT); }
       return;
     case 'C':
-      if (key[2] == 'n') { if (!leftButtonLocked) mouse.release(MOUSE_LEFT); }
+      if (key[2] == 'n') { if (!leftButtonLocked) { TIMING_STAMP_HID('M'); mouse.release(MOUSE_LEFT); } }
       else if (key[2] == 'a') { releaseHeldKey(KEY_CAPS_LOCK); }
       else if (key[2] == 't') {
         if (ctrlRefCount > 0) ctrlRefCount--;
@@ -572,10 +591,13 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         webSocket.sendTXT(num, buf);
       }
     } else if (length == 1 && msg[0] == '~') {
+      TIMING_STAMP_WS();
       handleKeyDown(msg);
     } else if (length > 1 && msg[0] == '~') {
+      TIMING_STAMP_WS();
       handleKeyUp(msg + 1);
     } else {
+      TIMING_STAMP_WS();
       handleKeyDown(msg);
     }
 
@@ -656,6 +678,7 @@ static void updateDisplay() {}
 
 void setup() {
   Serial.begin(115200);
+  setCpuFrequencyMhz(240);
   delay(500);
   Serial.println("\n[INIT] Starting iKeys...");
 
@@ -718,6 +741,8 @@ void setup() {
     snprintf(mdnsHostname, sizeof(mdnsHostname), "%s.local", hostname);
     bootMsg(ipStr, mdnsHostname, nullptr);
     Serial.printf("[WiFi] Connected! IP=%s, hostname=%s\n", ipStr, hostname);
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    Serial.println("[WiFi] Modem sleep disabled");
     ArduinoOTA.setHostname(hostname);
     // Uncomment next line and change the password to enable OTA authentication:
     // ArduinoOTA.setPassword("your-password-here");
@@ -887,10 +912,13 @@ static void handleDoubleClick(unsigned long now) {
 }
 
 void loop() {
+  webSocket.loop();
   ArduinoOTA.handle();
   server.handleClient();
-  webSocket.loop();
   unsigned long now = millis();
+
+  TIMING_PRINT();
+
   handleWdt(now);
   handleResetButton(now);
   handleLedSync();

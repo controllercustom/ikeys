@@ -110,6 +110,23 @@ arduino-cli upload -p /dev/ttyACM0 --fqbn "esp32:esp32:m5stack_atoms3:PartitionS
 
 Run `arduino-cli` as a normal user (not `sudo`) — it needs no elevated privileges for compile or upload (serial access works because your user is in the `dialout` group). Running it as root creates a root-owned `~/.cache/arduino`, which then blocks later non-root compiles; if that happens, remove it with `sudo rm -rf ~/.cache/arduino`.
 
+### 1b. Enable Latency Measurement (Optional)
+
+Uncomment `#define TIMING` near the top of `ikeys.ino` (line ~42) and reflash. The firmware will then print microsecond-granularity `[TIMING] K/M/C ws=... hid=... fw_us=...` lines over Serial for every key press, mouse click, or media key action. Use `test/measure_latency.py` to collect statistics:
+
+```bash
+# Keyboard
+sudo python3 test/measure_latency.py --host <ip> --type key --key a --samples 50
+
+# Mouse left click
+sudo python3 test/measure_latency.py --host <ip> --type mouse --samples 30
+
+# Media play/pause
+sudo python3 test/measure_latency.py --host <ip> --type media --samples 30
+```
+
+Measured firmware processing is **12–16 µs** and end-to-end is **2.9–6.2 ms** across all HID types. Re-comment `// #define TIMING` and reflash for normal operation (saves ~588 bytes flash).
+
 ### 2. Connect to WiFi
 
 On first boot, the ESP32 starts a WiFi access point named **iKeys-Config**. Connect to it with your phone or tablet — a captive portal should appear automatically. Select your home WiFi network and enter the password. The device will reboot and connect.
