@@ -69,15 +69,16 @@ arduino-cli upload -p /dev/ttyACM0 --fqbn "esp32:esp32:m5stack_atoms3:PartitionS
 
 # OTA upload (device must be online, no password = empty string for --upload-field).
 # If OTA password is enabled, change password="" to password="<pw>".
-arduino-cli upload -p <hostname>.local --upload-field password="" --fqbn "esp32:esp32:m5stack_atoms3:PartitionScheme=default_8MB,USBMode=default,CDCOnBoot=default" .
+# NOTE: --protocol network is required; without it arduino-cli treats the IP as serial.
+arduino-cli upload -p <hostname>.local --upload-field password="" --protocol network --fqbn "esp32:esp32:m5stack_atoms3:PartitionScheme=default_8MB,USBMode=default,CDCOnBoot=default" .
 
 # Or compile + OTA in one step (AtomS3):
 arduino-cli compile --fqbn "esp32:esp32:m5stack_atoms3:PartitionScheme=default_8MB,USBMode=default,CDCOnBoot=default" . --output-dir tmp/ikeys-build \
-  && arduino-cli upload -p <hostname>.local --upload-field password="" --fqbn "esp32:esp32:m5stack_atoms3:PartitionScheme=default_8MB,USBMode=default,CDCOnBoot=default" .
+  && arduino-cli upload -p <hostname>.local --upload-field password="" --protocol network --fqbn "esp32:esp32:m5stack_atoms3:PartitionScheme=default_8MB,USBMode=default,CDCOnBoot=default" .
 
 # Or compile + OTA in one step (generic dev module):
 arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default" . --output-dir tmp/ikeys-build \
-  && arduino-cli upload -p <hostname>.local --upload-field password="" --fqbn "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default" .
+  && arduino-cli upload -p <hostname>.local --upload-field password="" --protocol network --fqbn "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default" .
 ```
 
 ## Testing

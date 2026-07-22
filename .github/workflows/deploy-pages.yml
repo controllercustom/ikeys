@@ -1,0 +1,113 @@
+name: Build firmware and deploy flasher site to GitHub Pages
+
+on:
+  push:
+    tags: 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup arduino-cli
+        uses: arduino/setup-arduino-cli@v1
+
+      - name: Update core index
+        run: arduino-cli core update-index
+
+      - name: Install ESP32 core (pinned 3.3.10)
+        run: arduino-cli core install esp32:esp32@3.3.10
+
+      - name: Update library index
+        run: arduino-cli lib update-index
+
+      - name: Install libraries (pinned)
+        run: |
+          arduino-cli lib install "WiFiManager@2.0.17" "M5GFX@0.2.25" "WebSockets@2.7.2"
+
+      - name: Compile Generic ESP32-S3 Dev Module
+        run: |
+          arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default" \
+            --output-dir build/esp32s3 .
+
+      - name: Compile M5Stack AtomS3
+        run: |
+          arduino-cli compile --fqbn "esp32:esp32:m5stack_atoms3:PartitionScheme=default_8MB,USBMode=default,CDCOnBoot=default" \
+            --output-dir build/m5stack_atoms3 .
+
+      - name: Copy firmware binaries to docs
+        run: |
+          mkdir -p docs/firmware/esp32s3 docs/firmware/m5stack_atoms3
+          cp build/esp32s3/ikeys.ino.bootloader.bin docs/firmware/esp32s3/bootloader.bin
+          cp build/esp32s3/ikeys.ino.partitions.bin  docs/firmware/esp32s3/partitions.bin
+          cp build/esp32s3/boot_app0.bin             docs/firmware/esp32s3/boot_app0.bin
+          cp build/esp32s3/ikeys.ino.bin              docs/firmware/esp32s3/firmware.bin
+          cp build/m5stack_atoms3/ikeys.ino.bootloader.bin docs/firmware/m5stack_atoms3/bootloader.bin
+          cp build/m5stack_atoms3/ikeys.ino.partitions.bin  docs/firmware/m5stack_atoms3/partitions.bin
+          cp build/m5stack_atoms3/boot_app0.bin             docs/firmware/m5stack_atoms3/boot_app0.bin
+          cp build/m5stack_atoms3/ikeys.ino.bin              docs/firmware/m5stack_atoms3/firmware.bin
+
+      - name: Generate firmware manifest
+        env:
+          VERSION: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os
+          version = os.environ.get('VERSION', '0.0.0').lstrip('v')
+          repo = os.environ.get('REPO', 'controllercustom/ikeys')
+          manifest = {
+              'name': 'iKeys Assistive Keyboard',
+              'version': version,
+              'homepage': f'https://github.com/{repo}',
+              'builds': [
+                  {
+                      'chipFamily': 'ESP32-S3',
+                      'name': 'Generic ESP32-S3 Dev Module',
+                      'flash_size': '4MB',
+                      'parts': [
+                          {'path': 'esp32s3/bootloader.bin', 'offset': 0},
+                          {'path': 'esp32s3/partitions.bin', 'offset': 32768},
+                          {'path': 'esp32s3/boot_app0.bin', 'offset': 57344},
+                          {'path': 'esp32s3/firmware.bin', 'offset': 65536},
+                      ],
+                  },
+                  {
+                      'chipFamily': 'ESP32-S3',
+                      'name': 'M5Stack AtomS3',
+                      'flash_size': '8MB',
+                      'parts': [
+                          {'path': 'm5stack_atoms3/bootloader.bin', 'offset': 0},
+                          {'path': 'm5stack_atoms3/partitions.bin', 'offset': 32768},
+                          {'path': 'm5stack_atoms3/boot_app0.bin', 'offset': 57344},
+                          {'path': 'm5stack_atoms3/firmware.bin', 'offset': 65536},
+                      ],
+                  },
+              ],
+          }
+          with open('docs/firmware/manifest.json', 'w') as f:
+              json.dump(manifest, f, indent=2)
+          PYEOF
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
