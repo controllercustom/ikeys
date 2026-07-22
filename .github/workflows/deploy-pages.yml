@@ -18,23 +18,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup arduino-cli
-        uses: arduino/setup-arduino-cli@v1
+        uses: arduino/setup-arduino-cli@v2
 
       - name: Update core index
         run: arduino-cli core update-index
 
-      - name: Install ESP32 core (pinned 3.3.10)
-        run: arduino-cli core install esp32:esp32@3.3.10
+      - name: Install ESP32 core (pinned 3.3.11)
+        run: arduino-cli core install esp32:esp32@3.3.11
 
       - name: Update library index
         run: arduino-cli lib update-index
 
       - name: Install libraries (pinned)
         run: |
-          arduino-cli lib install "WiFiManager@2.0.17" "M5GFX@0.2.25" "WebSockets@2.7.2"
+          arduino-cli lib install "WiFiManager@2.0.17" "M5GFX@0.2.26" "WebSockets@2.7.2"
 
       - name: Compile Generic ESP32-S3 Dev Module
         run: |
