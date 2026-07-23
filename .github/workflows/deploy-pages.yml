@@ -26,8 +26,8 @@ jobs:
       - name: Update core index
         run: arduino-cli core update-index
 
-      - name: Install ESP32 core (pinned 3.3.11)
-        run: arduino-cli core install esp32:esp32@3.3.11
+      - name: Install ESP32 core (pinned 3.3.10)
+        run: arduino-cli core install esp32:esp32@3.3.10
 
       - name: Update library index
         run: arduino-cli lib update-index
