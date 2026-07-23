@@ -15,6 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  deploy:
+    environment:
+      name: github-pages
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -112,6 +116,4 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  deploy:
-    environment:
-      name: github-pages
+
