@@ -212,6 +212,10 @@
                 <option value="firmware/esp32s3.json">Generic ESP32-S3 Dev Module (4MB)</option>
                 <option value="firmware/m5stack_atoms3.json">M5Stack AtomS3 (8MB)</option>
             </select>
+            <label for="erase-first" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 16px;font-size:0.85rem;color:#666;cursor:pointer">
+                <input type="checkbox" id="erase-first" style="width:16px;height:16px;cursor:pointer;accent-color:var(--navy)">
+                Erase all flash (clears WiFi credentials, preferences)
+            </label>
             <esp-web-install-button id="install-btn" manifest="firmware/esp32s3.json"></esp-web-install-button>
             <p class="status" id="status">Select your board, then connect to begin</p>
         </div>
@@ -247,6 +251,12 @@
         }
         const btn = document.getElementById('install-btn');
         const sel = document.getElementById('board-select');
+        const eraseCb = document.getElementById('erase-first');
+        if (eraseCb && btn) {
+            eraseCb.addEventListener('change', function() {
+                btn.eraseFirst = this.checked;
+            });
+        }
         sel.addEventListener('change', function() {
             btn.setAttribute('manifest', this.value);
             document.getElementById('status').textContent = 'Board changed — click Connect to flash';
