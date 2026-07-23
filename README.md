@@ -81,8 +81,8 @@ The ESP32-S3's **native USB port** (USB-OTG) is required for HID — the UART/se
 Install [Arduino CLI](https://arduino.github.io/arduino-cli/), the ESP32 core, and required libraries:
 
 ```bash
-arduino-cli core install esp32:esp32
-arduino-cli lib install "WiFiManager" "M5GFX" "WebSockets"
+arduino-cli core install esp32:esp32@3.3.10
+arduino-cli lib install "WiFiManager@2.0.17" "M5GFX@0.2.26" "WebSockets@2.7.2"
 # No external HID library needed — built-in USBHIDKeyboard/Mouse/ConsumerControl used
 ```
 
@@ -90,7 +90,7 @@ arduino-cli lib install "WiFiManager" "M5GFX" "WebSockets"
 |---|---|
 | ESP32 Arduino Core | 3.3.10 |
 | WiFiManager | 2.0.17 |
-| M5GFX | 0.2.24 |
+| M5GFX | 0.2.26 |
 | WebSockets | 2.7.2 |
 
 Compile and upload via serial:
