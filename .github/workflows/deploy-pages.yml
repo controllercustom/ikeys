@@ -51,12 +51,12 @@ jobs:
           mkdir -p docs/firmware/esp32s3 docs/firmware/m5stack_atoms3
           cp build/esp32s3/ikeys.ino.bootloader.bin docs/firmware/esp32s3/bootloader.bin
           cp build/esp32s3/ikeys.ino.partitions.bin  docs/firmware/esp32s3/partitions.bin
-          cp build/esp32s3/boot_app0.bin             docs/firmware/esp32s3/boot_app0.bin
           cp build/esp32s3/ikeys.ino.bin              docs/firmware/esp32s3/firmware.bin
           cp build/m5stack_atoms3/ikeys.ino.bootloader.bin docs/firmware/m5stack_atoms3/bootloader.bin
           cp build/m5stack_atoms3/ikeys.ino.partitions.bin  docs/firmware/m5stack_atoms3/partitions.bin
-          cp build/m5stack_atoms3/boot_app0.bin             docs/firmware/m5stack_atoms3/boot_app0.bin
           cp build/m5stack_atoms3/ikeys.ino.bin              docs/firmware/m5stack_atoms3/firmware.bin
+          find ~/.arduino15 -name "boot_app0.bin" -exec cp {} docs/firmware/esp32s3/ \; || true
+          find ~/.arduino15 -name "boot_app0.bin" -exec cp {} docs/firmware/m5stack_atoms3/ \; || true
 
       - name: Generate firmware manifest
         env:
