@@ -36,7 +36,7 @@ const char index_html[] PROGMEM = R"rawliteral(
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>iKeys v1.0.2 Keyboard</title>
+    <title>iKeys 1.0.4 Keyboard</title>
     <style>
         :root {
             --bg-chassis: #e0e0d1;
@@ -290,6 +290,11 @@ function connectWS() {
     ws.onerror   = () => { updateDbg(); document.getElementById('dbg-ws').style.color='#f00'; };
 }
 connectWS();
+
+// Suppress iOS/iPadOS long-press magnifier bubble on all interactive elements.
+document.addEventListener('touchstart', function(e) {
+    if (e.target.closest('.key, .dpad8, .stick-base, .touchpad')) e.preventDefault();
+}, {passive: false});
 
 window.matchMedia('(orientation: portrait)').addListener(checkOrientation);
 checkOrientation();

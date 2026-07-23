@@ -37,7 +37,7 @@
 #endif
 #include <esp_wifi.h>
 
-#define VERSION "1.0.2"
+#define VERSION "1.0.4"
 
 // Timing instrumentation — uncomment #define TIMING below for latency measurement
 // #define TIMING
