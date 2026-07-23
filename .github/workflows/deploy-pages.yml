@@ -59,7 +59,7 @@ jobs:
           find ~/.arduino15 -name "boot_app0.bin" -exec cp {} docs/firmware/esp32s3/ \; || true
           find ~/.arduino15 -name "boot_app0.bin" -exec cp {} docs/firmware/m5stack_atoms3/ \; || true
 
-      - name: Generate firmware manifest
+      - name: Generate firmware manifests
         env:
           VERSION: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
@@ -68,37 +68,43 @@ jobs:
           import json, os
           version = os.environ.get('VERSION', '0.0.0').lstrip('v')
           repo = os.environ.get('REPO', 'controllercustom/ikeys')
-          manifest = {
+          common = {
               'name': 'iKeys Assistive Keyboard',
               'version': version,
               'homepage': f'https://github.com/{repo}',
-              'builds': [
-                  {
-                      'chipFamily': 'ESP32-S3',
-                      'name': 'Generic ESP32-S3 Dev Module',
-                      'flash_size': '4MB',
-                      'parts': [
-                          {'path': 'esp32s3/bootloader.bin', 'offset': 0},
-                          {'path': 'esp32s3/partitions.bin', 'offset': 32768},
-                          {'path': 'esp32s3/boot_app0.bin', 'offset': 57344},
-                          {'path': 'esp32s3/firmware.bin', 'offset': 65536},
-                      ],
-                  },
-                  {
-                      'chipFamily': 'ESP32-S3',
-                      'name': 'M5Stack AtomS3',
-                      'flash_size': '8MB',
-                      'parts': [
-                          {'path': 'm5stack_atoms3/bootloader.bin', 'offset': 0},
-                          {'path': 'm5stack_atoms3/partitions.bin', 'offset': 32768},
-                          {'path': 'm5stack_atoms3/boot_app0.bin', 'offset': 57344},
-                          {'path': 'm5stack_atoms3/firmware.bin', 'offset': 65536},
-                      ],
-                  },
-              ],
           }
-          with open('docs/firmware/manifest.json', 'w') as f:
-              json.dump(manifest, f, indent=2)
+          esp32s3 = {
+              **common,
+              'builds': [{
+                  'chipFamily': 'ESP32-S3',
+                  'name': 'Generic ESP32-S3 Dev Module',
+                  'flash_size': '4MB',
+                  'parts': [
+                      {'path': 'esp32s3/bootloader.bin', 'offset': 0},
+                      {'path': 'esp32s3/partitions.bin', 'offset': 32768},
+                      {'path': 'esp32s3/boot_app0.bin', 'offset': 57344},
+                      {'path': 'esp32s3/firmware.bin', 'offset': 65536},
+                  ],
+              }],
+          }
+          atoms3 = {
+              **common,
+              'builds': [{
+                  'chipFamily': 'ESP32-S3',
+                  'name': 'M5Stack AtomS3',
+                  'flash_size': '8MB',
+                  'parts': [
+                      {'path': 'm5stack_atoms3/bootloader.bin', 'offset': 0},
+                      {'path': 'm5stack_atoms3/partitions.bin', 'offset': 32768},
+                      {'path': 'm5stack_atoms3/boot_app0.bin', 'offset': 57344},
+                      {'path': 'm5stack_atoms3/firmware.bin', 'offset': 65536},
+                  ],
+              }],
+          }
+          with open('docs/firmware/esp32s3.json', 'w') as f:
+              json.dump(esp32s3, f, indent=2)
+          with open('docs/firmware/m5stack_atoms3.json', 'w') as f:
+              json.dump(atoms3, f, indent=2)
           PYEOF
 
       - name: Upload artifact

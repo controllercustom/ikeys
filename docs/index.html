@@ -212,8 +212,8 @@
             <ol class="steps">
                 <li>Connect your ESP32-S3 board to your computer via USB</li>
                 <li>Put the board into <strong>download mode</strong> (AtomS3: hold Reset button 2–3 seconds until green LED)</li>
-                <li>Click <strong>Connect</strong> below and select the board from the browser dialog</li>
-                <li>Choose your board variant and click <strong>Install</strong></li>
+                <li>Select your board below, then click <strong>Connect</strong> and choose it from the browser dialog</li>
+                <li>Click <strong>Install</strong> to flash the firmware</li>
                 <li>Wait for the flash to complete — the board reboots automatically</li>
             </ol>
             <div class="note">
@@ -222,8 +222,13 @@
         </div>
 
         <div class="card" style="text-align:center">
-            <esp-web-install-button manifest="firmware/manifest.json"></esp-web-install-button>
-            <p class="status" id="status">Connect your board to begin</p>
+            <label for="board-select" style="display:block;font-weight:600;color:var(--navy);margin-bottom:6px;font-size:0.9rem">Select your board:</label>
+            <select id="board-select" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--border);font-size:1rem;background:#fff;margin-bottom:16px;cursor:pointer">
+                <option value="firmware/esp32s3.json">Generic ESP32-S3 Dev Module (4MB)</option>
+                <option value="firmware/m5stack_atoms3.json">M5Stack AtomS3 (8MB)</option>
+            </select>
+            <esp-web-install-button id="install-btn" manifest="firmware/esp32s3.json"></esp-web-install-button>
+            <p class="status" id="status">Select your board, then connect to begin</p>
         </div>
 
         <div class="card">
@@ -249,13 +254,18 @@
     <script>
     (async function() {
         try {
-            const r = await fetch('firmware/manifest.json');
+            const r = await fetch('firmware/esp32s3.json');
             const m = await r.json();
             document.getElementById('version').textContent = 'v' + m.version;
         } catch(e) {
             document.getElementById('version').textContent = 'v1.0.2';
         }
-        const btn = document.querySelector('esp-web-install-button');
+        const btn = document.getElementById('install-btn');
+        const sel = document.getElementById('board-select');
+        sel.addEventListener('change', function() {
+            btn.setAttribute('manifest', this.value);
+            document.getElementById('status').textContent = 'Board changed — click Connect to flash';
+        });
         if (btn) {
             btn.addEventListener('progress', function(e) {
                 const s = document.getElementById('status');
