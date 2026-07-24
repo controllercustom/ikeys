@@ -1,0 +1,19 @@
+profiles:
+  atoms3:
+    fqbn: esp32:esp32:m5stack_atoms3:PartitionScheme=default_8MB,USBMode=default,CDCOnBoot=default
+    platforms:
+      - platform: esp32:esp32 (3.3.10)
+        platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    libraries:
+      - WiFiManager (2.0.17)
+      - WebSockets (2.7.2)
+      - M5GFX (0.2.26)
+
+  esp32s3:
+    fqbn: esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default
+    platforms:
+      - platform: esp32:esp32 (3.3.10)
+        platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    libraries:
+      - WiFiManager (2.0.17)
+      - WebSockets (2.7.2)

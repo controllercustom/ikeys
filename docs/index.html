@@ -3,273 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iKeys — Web Firmware Flasher</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>iKeys — Firmware Flasher</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⌨</text></svg>">
-    <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
-    <style>
-        :root {
-            --navy: #1a2b4c;
-            --yellow: #fdf6be;
-            --gold: #b89c4c;
-            --bg: #e0e0d1;
-            --text: #111;
-            --border: #dcd3a0;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .container {
-            max-width: 640px;
-            width: 100%;
-            padding: 24px 16px;
-        }
-        header {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-        header h1 {
-            font-size: 2rem;
-            color: var(--navy);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        header h1 span { font-size: 1.6rem; }
-        header .subtitle {
-            color: #555;
-            margin-top: 4px;
-            font-size: 0.95rem;
-        }
-        header .version {
-            display: inline-block;
-            margin-top: 8px;
-            padding: 2px 12px;
-            border-radius: 12px;
-            background: var(--navy);
-            color: #fff;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-        .card {
-            background: #fff;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-            margin-bottom: 20px;
-        }
-        .card h2 {
-            font-size: 1.1rem;
-            color: var(--navy);
-            margin-bottom: 12px;
-        }
-        .card p, .card ul {
-            font-size: 0.9rem;
-            line-height: 1.6;
-            color: #444;
-        }
-        .card ul { padding-left: 20px; }
-        .board-info {
-            display: flex;
-            gap: 12px;
-            margin-top: 16px;
-        }
-        .board-info .badge {
-            flex: 1;
-            padding: 12px;
-            border-radius: 8px;
-            background: #f5f3e8;
-            text-align: center;
-            border: 2px solid var(--border);
-        }
-        .board-info .badge strong {
-            display: block;
-            font-size: 0.85rem;
-            color: var(--navy);
-        }
-        .board-info .badge small {
-            font-size: 0.75rem;
-            color: #777;
-        }
-        esp-web-install-button {
-            display: block;
-            margin: 20px 0 8px;
-        }
-        esp-web-install-button::part(button) {
-            background: var(--navy) !important;
-            color: #fff !important;
-            border: none !important;
-            border-radius: 8px !important;
-            padding: 14px 28px !important;
-            font-size: 1rem !important;
-            font-weight: 600 !important;
-            cursor: pointer !important;
-            transition: background 0.15s !important;
-            width: 100% !important;
-        }
-        esp-web-install-button::part(button):hover {
-            background: #243b66 !important;
-        }
-        esp-web-install-button::part(unsupported) {
-            background: #8a3a3a !important;
-            color: #fff !important;
-            border: none !important;
-            border-radius: 8px !important;
-            padding: 14px 28px !important;
-            font-size: 0.9rem !important;
-            text-align: center !important;
-        }
-        .status {
-            text-align: center;
-            font-size: 0.85rem;
-            color: #666;
-            margin-top: 8px;
-        }
-        .steps {
-            counter-reset: step;
-            list-style: none;
-            padding: 0;
-        }
-        .steps li {
-            counter-increment: step;
-            padding: 8px 0 8px 32px;
-            position: relative;
-            font-size: 0.9rem;
-            color: #444;
-        }
-        .steps li::before {
-            content: counter(step);
-            position: absolute;
-            left: 0;
-            top: 8px;
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            background: var(--navy);
-            color: #fff;
-            font-size: 0.75rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        footer {
-            text-align: center;
-            padding: 20px 0;
-            font-size: 0.8rem;
-            color: #888;
-        }
-        footer a { color: var(--navy); }
-        .note {
-            background: #fff3cd;
-            border: 1px solid #ffc107;
-            border-radius: 8px;
-            padding: 12px 16px;
-            font-size: 0.85rem;
-            color: #664d03;
-            margin-top: 16px;
-        }
-        @media (max-width: 480px) {
-            .container { padding: 16px 12px; }
-            .card { padding: 16px; }
-            header h1 { font-size: 1.5rem; }
-            .board-info { flex-direction: column; }
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1><span>⌨</span> iKeys</h1>
-            <p class="subtitle">Assistive Keyboard — ESP32-S3 USB HID</p>
-            <span class="version" id="version">v---</span>
-        </header>
+        <h1>⌨ iKeys Firmware Flasher</h1>
+        <p class="subtitle">Assistive Keyboard — Flash firmware to your ESP32-S3 board via browser</p>
 
-<div class="card">
-            <h2>Instructions</h2>
-            <ol class="steps">
-                <li>Connect your ESP32-S3 board to your computer via USB</li>
-                <li>Put the board into <strong>download mode</strong> (AtomS3: hold Reset button 2–3 seconds until green LED)</li>
-                <li>Select your board below, then click <strong>Connect</strong> and choose it from the browser dialog</li>
-                <li>Click <strong>Install</strong> to flash the firmware</li>
-                <li>Wait for the flash to complete — the board reboots automatically</li>
-            </ol>
-            <div class="note">
-                <strong>Note:</strong> WebSerial requires <strong>Chrome</strong> or <strong>Edge</strong> on desktop or Android. Safari and Firefox are not supported.
+        <div class="card">
+            <div class="status-bar">
+                <span id="status-text">Initializing...</span>
+                <span id="status-badge" class="status-badge ready">ready</span>
             </div>
+
+            <div class="form-group">
+                <label for="board">Board Type</label>
+                <select id="board">
+                    <option value="esp32s3">Generic ESP32-S3 Dev Module (4MB)</option>
+                    <option value="atoms3">M5Stack AtomS3 (8MB)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="version">Firmware Version</label>
+                <select id="version">
+                    <option value="">Loading...</option>
+                </select>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="erase-all">
+                <label for="erase-all">Erase all flash before flashing</label>
+            </div>
+
+            <button id="flash-btn" class="btn">Flash Firmware</button>
+
+            <div id="progress-bar"><div id="progress-fill"></div></div>
+            <div id="progress-text"></div>
         </div>
 
-        <div class="card" style="text-align:center">
-            <label for="board-select" style="display:block;font-weight:600;color:var(--navy);margin-bottom:6px;font-size:0.9rem">Select your board:</label>
-            <select id="board-select" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--border);font-size:1rem;background:#fff;margin-bottom:16px;cursor:pointer">
-                <option value="firmware/esp32s3.json">Generic ESP32-S3 Dev Module (4MB)</option>
-                <option value="firmware/m5stack_atoms3.json">M5Stack AtomS3 (8MB)</option>
-            </select>
-            <label for="erase-first" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 16px;font-size:0.85rem;color:#666;cursor:pointer">
-                <input type="checkbox" id="erase-first" style="width:16px;height:16px;cursor:pointer;accent-color:var(--navy)">
-                Erase all flash (clears WiFi credentials, preferences)
-            </label>
-            <esp-web-install-button id="install-btn" manifest="firmware/esp32s3.json"></esp-web-install-button>
-            <p class="status" id="status">Select your board, then connect to begin</p>
+        <div class="card">
+            <pre id="log"></pre>
+        </div>
+
+        <div class="card instructions" id="instructions-content">
+            <h2>Bootloader Mode Instructions</h2>
+
+            <div id="esp32s3-info">
+                <h3>Generic ESP32-S3 Dev Module</h3>
+                <ol>
+                    <li>Connect the board to your computer via USB</li>
+                    <li>Press and <strong>hold</strong> the <span class="key">BOOT</span> button (<span class="key">GPIO0</span>)</li>
+                    <li>While holding <span class="key">BOOT</span>, press and release the <span class="key">EN</span> / <span class="key">RST</span> button</li>
+                    <li>Release the <span class="key">BOOT</span> button</li>
+                    <li>The device is now in download mode</li>
+                    <li>Click <strong>Flash Firmware</strong> above and select the device in the browser serial prompt</li>
+                </ol>
+            </div>
+
+            <div id="atoms3-info" class="hidden">
+                <h3>M5Stack AtomS3</h3>
+                <ol>
+                    <li>Connect the AtomS3 to your computer via USB-C</li>
+                    <li>Press and <strong>hold</strong> the side button (the only button on the side)</li>
+                    <li>Keep holding for <strong>2 seconds</strong> until the green LED inside turns on</li>
+                    <li>Release the button</li>
+                    <li>The device is now in download mode (green LED indicates bootloader mode)</li>
+                    <li>Click <strong>Flash Firmware</strong> above and select the device in the browser serial prompt</li>
+                </ol>
+            </div>
         </div>
 
         <div class="card">
             <h2>About iKeys</h2>
             <p>Wireless assistive keyboard that turns a tablet or phone into a full USB keyboard and mouse for any computer. Uses an ESP32-S3 with native USB HID — no software to install on the host.</p>
-            <ul>
-                <li>8&times;12 CSS grid keyboard + numpad overlay</li>
-                <li>Mouse emulation with speed/accel control</li>
-                <li>Smart Typing auto-space &amp; capitalization</li>
-                <li>macOS mode with correct HID mapping</li>
-                <li>Slide-typing, multi-touch, modifier keys</li>
-            </ul>
             <p style="margin-top:12px">
                 <a href="https://github.com/controllercustom/ikeys" target="_blank">View on GitHub →</a>
             </p>
         </div>
-
-        <footer>
-            <p>MIT License &mdash; 2026 controllercustom@myyahoo.com</p>
-        </footer>
     </div>
 
-    <script>
-    (async function() {
-        try {
-            const r = await fetch('firmware/esp32s3.json');
-            const m = await r.json();
-            document.getElementById('version').textContent = 'v' + m.version;
-        } catch(e) {
-            document.getElementById('version').textContent = 'v1.0.4';
-        }
-        const btn = document.getElementById('install-btn');
-        const sel = document.getElementById('board-select');
-        const eraseCb = document.getElementById('erase-first');
-        if (eraseCb && btn) {
-            eraseCb.addEventListener('change', function() {
-                btn.eraseFirst = this.checked;
-            });
-        }
-        sel.addEventListener('change', function() {
-            btn.setAttribute('manifest', this.value);
-            document.getElementById('status').textContent = 'Board changed — click Connect to flash';
-        });
-        if (btn) {
-            btn.addEventListener('progress', function(e) {
-                const s = document.getElementById('status');
-                if (e.detail.status === 'done') {
-                    s.textContent = 'Flash complete! Board is rebooting...';
-                }
-            });
-        }
-    })();
-    </script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>

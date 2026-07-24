@@ -1,0 +1,169 @@
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install arduino-cli
+        run: |
+          wget -q -O /tmp/arduino-cli.tar.gz https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz
+          tar xzf /tmp/arduino-cli.tar.gz -C /usr/local/bin
+          arduino-cli version
+
+      - name: Install ESP32 core
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.10
+
+      - name: Install libraries
+        run: |
+          arduino-cli lib install WiFiManager@2.0.17
+          arduino-cli lib install WebSockets@2.7.2
+          arduino-cli lib install M5GFX@0.2.26
+
+      - name: Build AtomS3
+        run: arduino-cli compile --profile atoms3 . --output-dir build/atoms3
+
+      - name: Build ESP32-S3
+        run: arduino-cli compile --profile esp32s3 . --output-dir build/esp32s3
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "version=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if gh-pages branch exists
+        id: check-gh-pages
+        run: |
+          if git ls-remote --exit-code --heads origin gh-pages; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout gh-pages for existing firmware
+        if: steps.check-gh-pages.outputs.exists == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: gh-pages
+          path: gh-pages
+          fetch-depth: 1
+
+      - name: Prepare deploy directory
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          mkdir -p deploy
+
+          cp -r docs/* deploy/
+          rm -rf deploy/firmware deploy/firmware.json
+
+          if [ -d gh-pages/firmware ]; then
+            cp -r gh-pages/firmware deploy/firmware
+          fi
+          if [ -f gh-pages/firmware.json ]; then
+            cp gh-pages/firmware.json deploy/firmware.json
+          fi
+
+          for board in atoms3 esp32s3; do
+            bdir="build/${board}"
+            fdir="deploy/firmware/${VERSION}/${board}"
+            mkdir -p "$fdir"
+            cp "$bdir/ikeys.ino.bootloader.bin" "$fdir/bootloader.bin"
+            cp "$bdir/ikeys.ino.partitions.bin"  "$fdir/partitions.bin"
+            if [ -f "$bdir/boot_app0.bin" ]; then
+              cp "$bdir/boot_app0.bin" "$fdir/boot_app0.bin"
+            else
+              BAPP0=$(find ~/.arduino15 -path '*/esp32/*/tools/partitions/boot_app0.bin' 2>/dev/null | head -1)
+              if [ -n "$BAPP0" ]; then
+                cp "$BAPP0" "$fdir/boot_app0.bin"
+              fi
+            fi
+            cp "$bdir/ikeys.ino.bin" "$fdir/firmware.bin"
+          done
+
+      - name: Generate firmware manifest
+        run: |
+          python3 << 'PYEOF'
+          import json, os
+          firmware_dir = 'deploy/firmware'
+          versions = sorted(
+              [d for d in os.listdir(firmware_dir)
+               if os.path.isdir(os.path.join(firmware_dir, d)) and not d.startswith('.')],
+              reverse=True
+          )
+          FLASH_LAYOUT = [
+              {'file': 'bootloader.bin', 'address': 0x0},
+              {'file': 'partitions.bin', 'address': 0x8000},
+              {'file': 'boot_app0.bin',  'address': 0xe000},
+              {'file': 'firmware.bin',   'address': 0x10000},
+          ]
+          manifest = {
+              'versions': versions,
+              'latest': versions[0] if versions else None,
+              'flashLayout': FLASH_LAYOUT,
+              'boards': {
+                  'esp32s3': {'name': 'Generic ESP32-S3 Dev Module'},
+                  'atoms3':   {'name': 'M5Stack AtomS3'},
+              },
+          }
+          with open('deploy/firmware.json', 'w') as f:
+              json.dump(manifest, f, indent=2)
+          PYEOF
+
+      - name: Push firmware to gh-pages branch
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/gh-pages
+          cp -r deploy/firmware deploy/firmware.json /tmp/gh-pages/
+          cd /tmp/gh-pages
+          git init
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          git commit -m "Firmware $VERSION" --allow-empty
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/gh-pages --force
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: deploy
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

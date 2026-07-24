@@ -96,15 +96,18 @@ arduino-cli lib install "WiFiManager@2.0.17" "M5GFX@0.2.26" "WebSockets@2.7.2"
 Compile and upload via serial:
 
 ```bash
+# Compile — uses sketch.yaml profiles for reproducible builds
+arduino-cli compile --profile esp32s3 .
+arduino-cli compile --profile atoms3 .
+
+# Serial upload (no profile available for upload — use full FQBN):
 # Generic ESP32-S3 dev module
-arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default" .
 arduino-cli upload -p /dev/ttyUSB0 --fqbn "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default" .
 
 # M5Stack AtomS3
 # With CDC ACM disabled, the AtomS3 must be in bootloader (download) mode before upload.
 # Press and hold the small Reset button on the side for 2–3 seconds, then release.
 # The internal LED turns green and solid to confirm bootloader mode.
-arduino-cli compile --fqbn "esp32:esp32:m5stack_atoms3:PartitionScheme=default_8MB,USBMode=default,CDCOnBoot=default" .
 arduino-cli upload -p /dev/ttyACM0 --fqbn "esp32:esp32:m5stack_atoms3:PartitionScheme=default_8MB,USBMode=default,CDCOnBoot=default" .
 ```
 
@@ -223,13 +226,14 @@ Each key press is reference-counted on the server. If two clients press the same
 Once the device is online, you can upload new firmware wirelessly over the network with `arduino-cli` (no serial connection needed):
 
 ```bash
+# Compile + OTA in one step (uses sketch.yaml profiles)
 # Generic dev module
-arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default" . --output-dir tmp/ikeys-build \
+arduino-cli compile --profile esp32s3 . --output-dir tmp/ikeys-build \
   && arduino-cli upload -p ikeys.local --upload-field password="" \
      --fqbn "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default" .
 
 # M5Stack AtomS3
-arduino-cli compile --fqbn "esp32:esp32:m5stack_atoms3:PartitionScheme=default_8MB,USBMode=default,CDCOnBoot=default" . --output-dir tmp/ikeys-build \
+arduino-cli compile --profile atoms3 . --output-dir tmp/ikeys-build \
   && arduino-cli upload -p ikeys.local --upload-field password="" \
      --fqbn "esp32:esp32:m5stack_atoms3:PartitionScheme=default_8MB,USBMode=default,CDCOnBoot=default" .
 ```
