@@ -1,0 +1,33 @@
+{
+  "versions": [
+    "v1.0.4",
+    "latest"
+  ],
+  "latest": "v1.0.4",
+  "flashLayout": [
+    {
+      "file": "bootloader.bin",
+      "address": 0
+    },
+    {
+      "file": "partitions.bin",
+      "address": 32768
+    },
+    {
+      "file": "boot_app0.bin",
+      "address": 57344
+    },
+    {
+      "file": "firmware.bin",
+      "address": 65536
+    }
+  ],
+  "boards": {
+    "esp32s3": {
+      "name": "Generic ESP32-S3 Dev Module"
+    },
+    "atoms3": {
+      "name": "M5Stack AtomS3"
+    }
+  }
+}
